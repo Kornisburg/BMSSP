@@ -1,0 +1,17 @@
+[package]
+name = "bmssp-rs"
+version = "0.1.0"
+edition = "2021"
+description = "Duan-Mao-Mao-Shu-Yin deterministic SSSP (Breaking the Sorting Barrier) + Dijkstra baseline"
+
+[dependencies]
+rand = "0.8"
+rand_chacha = "0.3"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
+[[bench]]
+name = "sssp"
+harness = false
