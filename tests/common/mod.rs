@@ -30,24 +30,33 @@ pub fn floyd_warshall(g: &Graph) -> Vec<f64> {
     d
 }
 
-pub fn assert_close(a: &[f64], b: &[f64], eps: f64) {
-    assert_eq!(a.len(), b.len());
+pub fn try_close(a: &[f64], b: &[f64], eps: f64) -> Result<(), String> {
+    if a.len() != b.len() {
+        return Err("length mismatch".into());
+    }
     for (x, y) in a.iter().zip(b) {
         if x.is_infinite() && y.is_infinite() {
             continue;
         }
         if x.is_infinite() || y.is_infinite() {
-            panic!("reachability mismatch: {x} vs {y}");
+            return Err(format!("reachability mismatch: {x} vs {y}"));
         }
         let scale = 1.0 + x.abs().max(y.abs());
-        assert!(
-            (x - y).abs() <= eps * scale,
-            "dist mismatch: {x} vs {y}"
-        );
+        if (x - y).abs() > eps * scale {
+            return Err(format!("dist mismatch: {x} vs {y}"));
+        }
+    }
+    Ok(())
+}
+
+pub fn assert_close(a: &[f64], b: &[f64], eps: f64) {
+    if let Err(e) = try_close(a, b, eps) {
+        panic!("{e}");
     }
 }
 
 /// Assert bmssp distances match Dijkstra (tolerance 0 for exact integer sums).
+#[allow(dead_code)]
 pub fn assert_bmssp_matches_dijkstra(g: &Graph, src: u32, eps: f64) {
     let d = dijkstra(g, src, &mut Counters::new());
     let b = bmssp_rs::bmssp::barrier_breaker_sssp(g, src, &mut Counters::new());

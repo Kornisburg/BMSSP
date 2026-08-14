@@ -107,9 +107,78 @@ every runnable size). Phase-2 work targets the asymptotic upgrades and a block-b
         equality edge can keep a stale parent, and zero-weight ties can break the layer order
         for the reverse-order `sub` accumulation. Both only skew pivot *selection* (fallback
         `P = S` preserves correctness) — perf concern, revisit in the pivot-quality ablation.
-- [ ] Phase 3: complexity-relevant upgrades (bound `k·2^(l·t)`, partial execution, D-empty
-      vs early stop) + ablation matrix.
-- [ ] Phase 3b: Lemma 3.3 block-based queue, differentially tested vs BTreeMap model.
+- [x] **Phase 3: complexity-relevant upgrades (bound `k·2^(l·t)`, partial execution, D-empty
+      vs early stop) + ablation matrix** — see Session 3.
+- [x] **Phase 3b: Lemma 3.3 block-based queue, differentially tested vs BTreeMap model.**
+- [ ] Phase 4: engineering polish (CSR locality, arena buffers, iterative recursion).
+- [ ] Phase 5: scaling n = 10^4..10^7; ablation (no-pivots, k/t schedules, BTreeMap vs block,
+      ±transform, recursion vs iterative); asymptotics t/(m log^(2/3) n) vs t/(m + n log n).
+- [ ] Phase 6: reproducibility docs (ALGORITHM.md, AUDIT.md, auto BENCHMARKS.md).
+
+## Session 3 (2026-08-14) — Phase 3 + 3b: partial execution, block queue, ablation
+
+Goal: bound the per-call workload by `k·2^(l·t)` (halt + hand up unprocessed work), implement
+the Lemma 3.3 block-based queue with real Pull, and expose the full ablation matrix in the bench.
+
+### Status
+
+- [x] `BmsspConfig { k, t, l, use_pivots, partial_execution, queue_impl }`; bench knobs
+      `BMSSP_NO_PIVOTS`, `BMSSP_QUEUE=map|block`, `BMSSP_PARTIAL`, `BMSSP_BENCH_ITERS`.
+- [x] Partial execution: halting at `|U| > k·2^(l·t)` (distinct vertices, epoch-deduped via
+      dedicated `marked_u` array + `u_epoch` — the shared `marked` is clobbered by children's
+      interior epochs); on halt the call drains its queue into U so the caller relaxes the
+      dropped items' edges.
+- [x] `drain()` on `PartialQueue`/`BlockQueue`/`QueueOps`; halt branch drains queue into u_total
+      with a comment citing Remark 3.4.
+- [x] Routing deviation kept (documented): every strict improvement is routed
+      (`cand >= bi - EPS -> pq`, else `to_batch`), not the paper's interval skip; W-vertices
+      discovered by FindPivots are inserted into the call's own queue (dist < b − EPS) instead
+      of relying on the paper's ≤-equality re-insertion (Remark 3.4) — this is what keeps
+      halting calls from losing them.
+- [x] BlockQueue (Lemma 3.3): fixed-block `F = 2^((l-1)·t)`, per-block min-buckets, max-boundary
+      split, gap placement; differential test `block_queue_matches_model` vs the BTreeMap model.
+- [x] `tests/config_variants.rs` (8 variants: pivots ±, queue ×, partial ×) verified vs Dijkstra
+      on all sized families.
+- [x] Bench ablation wired: per-graph `from_n(g.n)` for k/t/l (the top level must stay
+      successful: its bound `k·2^(l·t)` exceeds `|U| ≤ n`), env knobs for pivots/queue/partial.
+
+### Bugs found & fixed (partial execution)
+
+1. **Queue dropped on halt.** The halting call returned only `u_total` (its touched set), so
+   discovered-but-unprocessed queue items vanished. Fixed by draining the queue into U.
+2. **FindPivots-set dists were never queued.** `find_pivots` improves `dhat` for W vertices
+   without inserting them; on halt the W-sweep excludes them (`dhat >= B'_i`), so their edges
+   are never relaxed at the parent level. Case: `layered(20,15,4,5,Int{0,9})`, pivots=true,
+   vertex 202 (path `0→…→172→186→202`, w=0 edge `186→202`): dist[186]=21 set by the pivot
+   sweep, level-2 call halts with `B'_2=18`, vertex 202 stays unreachable. Fixed by queuing the
+   W-vertices (dist < b − EPS) directly — verified via `config_variants` (3/3 green).
+
+### Bench snapshot (release, `BMSSP_BENCH_ITERS=1`, partial execution ON, Block queue, pivots ON)
+
+| family | n | m | dijk(ms) | bmssp(ms) | speedup | verified |
+|---|---|---|---|---|---|---|
+| er_c2 | 10000 | 20000 | 0.986 | 9.128 | 0.11 | true |
+| er_c4 | 10000 | 40000 | 1.824 | 14.935 | 0.12 | true |
+| er_c8 | 10000 | 80000 | 2.900 | 18.343 | 0.16 | true |
+| er_c4_1e5 | 100000 | 400000 | 41.211 | 369.900 | 0.11 | true |
+| grid_100 | 10000 | 19800 | 1.310 | 11.289 | 0.12 | true |
+| grid_316 | 99856 | 199080 | 13.557 | 149.582 | 0.09 | true |
+| pl_c2 | 10000 | 20000 | 0.002 | 0.019 | 0.09 | true |
+| pl_c4_1e5 | 100000 | 400000 | 0.029 | 0.395 | 0.07 | true |
+| layered | 100000 | 398000 | 19.989 | 190.546 | 0.10 | true |
+| er_c4_real | 10000 | 40000 | 1.753 | 23.015 | 0.08 | true |
+
+### Key findings
+
+1. Every ablation variant is exact (all `verified=true`, incl. `_tr` rows) on the full bench
+   set. Partial execution + Block queue cut `layered` 1.76s -> 0.19s (Phase-1 snapshot) while
+   staying exact — the interval structure + halt bound now cap the pathological chains.
+2. BMSSP remains 6–15x slower than tuned Dijkstra at every runnable size; the block queue and
+   partial execution shrink the constant but don't change the asymptotic picture — consistent
+   with the honest-benchmark literature.
+
+### Open / next
+
 - [ ] Phase 4: engineering polish (CSR locality, arena buffers, iterative recursion).
 - [ ] Phase 5: scaling n = 10^4..10^7; ablation (no-pivots, k/t schedules, BTreeMap vs block,
       ±transform, recursion vs iterative); asymptotics t/(m log^(2/3) n) vs t/(m + n log n).

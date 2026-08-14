@@ -10,6 +10,8 @@ pub struct Counters {
     pub queue_pull: u64,
     pub queue_batch_prepend: u64,
     pub pivots_found: u64,
+    /// Number of BMSSP calls that halted early (partial execution, Lemma 3.1).
+    pub partial_executions: u64,
 }
 
 impl Counters {

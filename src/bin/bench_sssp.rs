@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use bmssp_rs::bmssp::{barrier_breaker_sssp, BmsspConfig, BmsspEngine};
+use bmssp_rs::bmssp::{BmsspConfig, BmsspEngine, QueueKind};
 use bmssp_rs::counters::Counters;
 use bmssp_rs::dijkstra::dijkstra;
 use bmssp_rs::graph::{Graph, WeightDist};
@@ -40,19 +40,17 @@ pub struct Row {
     pub b_pivots: u64,
 }
 
-pub fn bench_one(g: &Graph, src: u32, family: &str, iters: usize, use_pivots: bool) -> Row {
+pub fn bench_one(g: &Graph, src: u32, family: &str, iters: usize, ab: &Ablation) -> Row {
+    let cfg = BmsspConfig {
+        use_pivots: ab.use_pivots,
+        queue_impl: ab.queue_impl,
+        partial_execution: ab.partial_execution,
+        ..BmsspConfig::from_n(g.n)
+    };
     let mut dc = Counters::new();
     let d = dijkstra(g, src, &mut dc);
     let mut bc = Counters::new();
-    let b = if use_pivots {
-        barrier_breaker_sssp(g, src, &mut bc)
-    } else {
-        let cfg = BmsspConfig {
-            use_pivots: false,
-            ..BmsspConfig::from_n(g.n)
-        };
-        BmsspEngine::new(g, cfg, &mut bc).run(src)
-    };
+    let b = BmsspEngine::new(g, cfg.clone(), &mut bc).run(src);
     let verified = close(&d, &b);
 
     let mut dijk_ms = f64::MAX;
@@ -66,15 +64,7 @@ pub fn bench_one(g: &Graph, src: u32, family: &str, iters: usize, use_pivots: bo
     for _ in 0..iters {
         let mut c = Counters::new();
         let t = Instant::now();
-        if use_pivots {
-            barrier_breaker_sssp(g, src, &mut c);
-        } else {
-            let cfg = BmsspConfig {
-                use_pivots: false,
-                ..BmsspConfig::from_n(g.n)
-            };
-            BmsspEngine::new(g, cfg, &mut c).run(src);
-        }
+        BmsspEngine::new(g, cfg.clone(), &mut c).run(src);
         bmssp_ms = bmssp_ms.min(t.elapsed().as_secs_f64() * 1e3);
     }
 
@@ -102,23 +92,21 @@ pub fn bench_one_transformed(
     src: u32,
     family: &str,
     iters: usize,
-    use_pivots: bool,
+    ab: &Ablation,
 ) -> Row {
     let t = to_constant_degree(orig);
+    let cfg = BmsspConfig {
+        use_pivots: ab.use_pivots,
+        queue_impl: ab.queue_impl,
+        partial_execution: ab.partial_execution,
+        ..BmsspConfig::from_n(t.n)
+    };
     let d_orig = dijkstra(orig, src, &mut Counters::new());
 
     let mut dc = Counters::new();
     let _d = dijkstra(&t, src, &mut dc);
     let mut bc = Counters::new();
-    let b = if use_pivots {
-        barrier_breaker_sssp(&t, src, &mut bc)
-    } else {
-        let cfg = BmsspConfig {
-            use_pivots: false,
-            ..BmsspConfig::from_n(t.n)
-        };
-        BmsspEngine::new(&t, cfg, &mut bc).run(src)
-    };
+    let b = BmsspEngine::new(&t, cfg.clone(), &mut bc).run(src);
     let verified = close(&d_orig, &b[..orig.n]);
 
     let mut dijk_ms = f64::MAX;
@@ -132,15 +120,7 @@ pub fn bench_one_transformed(
     for _ in 0..iters {
         let mut c = Counters::new();
         let tt = Instant::now();
-        if use_pivots {
-            barrier_breaker_sssp(&t, src, &mut c);
-        } else {
-            let cfg = BmsspConfig {
-                use_pivots: false,
-                ..BmsspConfig::from_n(t.n)
-            };
-            BmsspEngine::new(&t, cfg, &mut c).run(src);
-        }
+        BmsspEngine::new(&t, cfg.clone(), &mut c).run(src);
         bmssp_ms = bmssp_ms.min(tt.elapsed().as_secs_f64() * 1e3);
     }
 
@@ -215,24 +195,56 @@ fn layered(layers: usize, width: usize, out: usize, wd: &WeightDist) -> Graph {
     bmssp_rs::graph::layered(layers, width, out, 0x1A1A, wd)
 }
 
-pub fn run_all(iters: usize, use_pivots: bool) -> String {
+pub fn run_all(iters: usize, ab: &Ablation) -> String {
     let mut out = String::new();
     out.push_str(&header());
     out.push('\n');
     let set = build_set();
     for (family, g) in &set {
         let src = 0u32;
-        let row = bench_one(g, src, family, iters, use_pivots);
+        let row = bench_one(g, src, family, iters, ab);
         out.push_str(&fmt_row(&row));
         out.push('\n');
     }
     out.push_str("\nconstant-degree transform (BMSSP run on the transformed graph):\n");
     for (family, g) in &set {
-        let row = bench_one_transformed(g, 0u32, family, iters, use_pivots);
+        let row = bench_one_transformed(g, 0u32, family, iters, ab);
         out.push_str(&fmt_row(&row));
         out.push('\n');
     }
     out
+}
+
+/// Ablation knobs from the environment: BMSSP_NO_PIVOTS=1 disables pivots,
+/// BMSSP_QUEUE=map|block selects the queue, BMSSP_PARTIAL=1 enables the
+/// k*2^(l*t) workload bound. k/t/l are always derived from the *graph's* n so
+/// the top-level call stays successful (its bound exceeds |U| <= n).
+pub struct Ablation {
+    pub use_pivots: bool,
+    pub queue_impl: QueueKind,
+    pub partial_execution: bool,
+}
+
+impl std::fmt::Debug for Ablation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "pivots={} queue={:?} partial={}",
+            self.use_pivots, self.queue_impl, self.partial_execution
+        )
+    }
+}
+
+pub fn ablation_from_env() -> Ablation {
+    let queue_impl = match std::env::var("BMSSP_QUEUE").as_deref() {
+        Ok("block") => QueueKind::Block,
+        _ => QueueKind::BTreeMap,
+    };
+    Ablation {
+        use_pivots: std::env::var("BMSSP_NO_PIVOTS").is_err(),
+        queue_impl,
+        partial_execution: std::env::var("BMSSP_PARTIAL").is_ok(),
+    }
 }
 
 #[allow(dead_code)]
@@ -241,7 +253,7 @@ fn main() {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(3);
-    let use_pivots = std::env::var("BMSSP_NO_PIVOTS").is_err();
-    println!("iters={iters} use_pivots={use_pivots}\n");
-    print!("{}", run_all(iters, use_pivots));
+    let ab = ablation_from_env();
+    println!("iters={iters} ablation={ab:?}\n");
+    print!("{}", run_all(iters, &ab));
 }
