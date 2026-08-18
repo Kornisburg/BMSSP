@@ -164,19 +164,35 @@ pub fn fmt_row(r: &Row) -> String {
 fn build_set() -> Vec<(String, Graph)> {
     let int = WeightDist::Int { min: 1, max: 100 };
     let real = WeightDist::Real { min: 0.0, max: 1.0 };
+    let scale = std::env::var("BMSSP_SCALE").is_ok();
     let mut v = Vec::new();
-    for (label, g) in [
-        ("er_c2", er(10_000, 2, &int)),
-        ("er_c4", er(10_000, 4, &int)),
-        ("er_c8", er(10_000, 8, &int)),
-        ("er_c4_1e5", er(100_000, 4, &int)),
-        ("grid_100", grid(100, 100, &int)),
-        ("grid_316", grid(316, 316, &int)),
-        ("pl_c2", power_law(10_000, 2, &int)),
-        ("pl_c4_1e5", power_law(100_000, 4, &int)),
-        ("layered", layered(200, 500, 4, &real)),
-        ("er_c4_real", er(10_000, 4, &real)),
-    ] {
+    let base: Vec<(&str, Graph)> = if scale {
+        // Phase 5 scaling set (n up to ~1e6). Skip transform pass for these.
+        vec![
+            ("er_c4_1e4", er(10_000, 4, &int)),
+            ("er_c4_1e5", er(100_000, 4, &int)),
+            ("er_c4_3e5", er(300_000, 4, &int)),
+            ("er_c4_1e6", er(1_000_000, 4, &int)),
+            ("grid_316", grid(316, 316, &int)),
+            ("grid_500", grid(500, 500, &int)),
+            ("layered_1e5", layered(200, 500, 4, &real)),
+            ("layered_3e5", layered(300, 1000, 4, &real)),
+        ]
+    } else {
+        vec![
+            ("er_c2", er(10_000, 2, &int)),
+            ("er_c4", er(10_000, 4, &int)),
+            ("er_c8", er(10_000, 8, &int)),
+            ("er_c4_1e5", er(100_000, 4, &int)),
+            ("grid_100", grid(100, 100, &int)),
+            ("grid_316", grid(316, 316, &int)),
+            ("pl_c2", power_law(10_000, 2, &int)),
+            ("pl_c4_1e5", power_law(100_000, 4, &int)),
+            ("layered", layered(200, 500, 4, &real)),
+            ("er_c4_real", er(10_000, 4, &real)),
+        ]
+    };
+    for (label, g) in base {
         v.push((label.to_string(), g));
     }
     v
@@ -200,17 +216,31 @@ pub fn run_all(iters: usize, ab: &Ablation) -> String {
     out.push_str(&header());
     out.push('\n');
     let set = build_set();
+    let scale = std::env::var("BMSSP_SCALE").is_ok();
     for (family, g) in &set {
         let src = 0u32;
         let row = bench_one(g, src, family, iters, ab);
         out.push_str(&fmt_row(&row));
         out.push('\n');
+        // Asymptotic normalizers (Phase 5): time / (m log^{2/3} n) vs time / (m + n log n).
+        if scale && row.n > 1 && row.m > 0 {
+            let logn = (row.n as f64).log2();
+            let denom_bm = (row.m as f64) * logn.powf(2.0 / 3.0);
+            let denom_dj = row.m as f64 + (row.n as f64) * logn;
+            out.push_str(&format!(
+                "  asymptotics: bmssp/(m log^(2/3)n)={:.3e}  dijk/(m+n log n)={:.3e}\n",
+                row.bmssp_ms / denom_bm,
+                row.dijk_ms / denom_dj
+            ));
+        }
     }
-    out.push_str("\nconstant-degree transform (BMSSP run on the transformed graph):\n");
-    for (family, g) in &set {
-        let row = bench_one_transformed(g, 0u32, family, iters, ab);
-        out.push_str(&fmt_row(&row));
-        out.push('\n');
+    if !scale {
+        out.push_str("\nconstant-degree transform (BMSSP run on the transformed graph):\n");
+        for (family, g) in &set {
+            let row = bench_one_transformed(g, 0u32, family, iters, ab);
+            out.push_str(&fmt_row(&row));
+            out.push('\n');
+        }
     }
     out
 }

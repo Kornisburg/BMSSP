@@ -62,6 +62,11 @@ impl Graph {
             assert!(w.is_finite() && w >= 0.0, "weight must be finite, non-negative");
             out[u as usize].push((v, w));
         }
+        // Sort each adjacency list by (weight, target) for scan locality in
+        // Dijkstra / BaseCase / FindPivots relax loops.
+        for list in &mut out {
+            list.sort_by(|a, b| a.1.total_cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
+        }
         let mut offsets = vec![0usize; n + 1];
         for u in 0..n {
             offsets[u + 1] = offsets[u] + out[u].len();
