@@ -44,11 +44,12 @@ impl BmsspConfig {
     /// k * 2^(l*t): the Lemma 3.1 partial-execution workload bound for a call
     /// at level `l`. Saturates to usize::MAX instead of overflowing.
     pub fn partial_limit(&self, l: usize) -> usize {
-        self.k.saturating_mul(
-            1usize
-                .checked_shl((l * self.t).min(63) as u32)
-                .unwrap_or(usize::MAX),
-        )
+        let shift = l * self.t;
+        if shift >= usize::BITS as usize {
+            usize::MAX
+        } else {
+            self.k.saturating_mul(1usize << shift)
+        }
     }
 
     /// Lemma 3.3 block size M = 2^((l-1)*t) for a call at level `l >= 1`.
@@ -56,9 +57,12 @@ impl BmsspConfig {
         if l == 0 {
             return 1;
         }
-        1usize
-            .checked_shl(((l - 1) * self.t).min(63) as u32)
-            .unwrap_or(usize::MAX)
+        let shift = (l - 1) * self.t;
+        if shift >= usize::BITS as usize {
+            usize::MAX
+        } else {
+            1usize << shift
+        }
     }
 }
 
@@ -179,15 +183,8 @@ impl<'a> BmsspEngine<'a> {
         };
 
         let mut pq = self.make_queue(l, b);
-        for &x in &pivots {
-            if self.dist[x as usize] < b - EPS {
-                pq.insert(x, self.dist[x as usize]);
-                self.counters.queue_insert += 1;
-            }
-        }
-        // FindPivots' bounded Bellman-Ford improves dhat for W without routing
-        // them; queue W directly so this call processes their out-edges.
-        for &x in &wset {
+        let initial_items = if self.cfg.use_pivots { &wset } else { &pivots };
+        for &x in initial_items {
             if self.dist[x as usize] < b - EPS {
                 pq.insert(x, self.dist[x as usize]);
                 self.counters.queue_insert += 1;
@@ -679,5 +676,21 @@ mod tests {
         assert_eq!(eng.parent[1], 0, "1 should parent to earlier W vertex 0");
         // Even after later rounds re-see 1→0, W-order forbids parent[0]=1.
         assert_ne!(eng.parent[0], 1);
+    }
+
+    #[test]
+    fn limits_saturate_gracefully_on_large_shifts() {
+        let cfg = BmsspConfig {
+            k: 10,
+            t: 10,
+            l: 10,
+            use_pivots: true,
+            partial_execution: true,
+            queue_impl: QueueKind::BTreeMap,
+        };
+        // l * t = 100 >= usize::BITS
+        assert_eq!(cfg.partial_limit(10), usize::MAX);
+        assert_eq!(cfg.block_size(10), usize::MAX);
+        assert_eq!(cfg.block_size(0), 1);
     }
 }
