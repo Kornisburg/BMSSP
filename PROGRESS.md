@@ -183,3 +183,107 @@ the Lemma 3.3 block-based queue with real Pull, and expose the full ablation mat
 - [ ] Phase 5: scaling n = 10^4..10^7; ablation (no-pivots, k/t schedules, BTreeMap vs block,
       ±transform, recursion vs iterative); asymptotics t/(m log^(2/3) n) vs t/(m + n log n).
 - [ ] Phase 6: reproducibility docs (ALGORITHM.md, AUDIT.md, auto BENCHMARKS.md).
+
+## Session 4 (2026-08-18) — Correctness audit + paper-contract repairs
+
+Goal: review the codebase against the paper / PLAN, catch latent bugs that distance-vs-Dijkstra
+tests were masking, and restore BaseCase / leftover / FindPivots contracts so partial execution
+and the k+1 workload bound are real.
+
+### Status
+
+- [x] Full suite green before changes (35 tests); after fixes: 40 tests green.
+- [x] Deep audit of `bmssp.rs` / `queue.rs` / params / transform vs Algorithms 1–3.
+- [x] **P0: `base_case` settlement accounting fixed** — seeds no longer pre-mark; settle on
+      extract-min; stop at k+1; `B' = max dhat in U0` when `|U0| > k`. Still return
+      settled-including-boundary + still-in-heap (documented safety vs equal-key loops).
+- [x] **P0: `S_i` leftover BatchPrepend** (Alg. 3 line 25) when `B'_i < B_i`, skipping
+      vertices already in `U_i` to avoid infinite re-prepend on tie buckets.
+- [x] **P0: FindPivots re-expands on ≤ each round** (Alg. 1 `W_i` set semantics) so strict
+      improvements propagate within the remaining k rounds.
+- [x] **P0: |U| dedup bug under recursion** — shared `marked_u`/`u_epoch` was clobbered by
+      child calls, inflating `|U|` past `k·2^(l·t)` and spuriously halting the top level
+      (`B' << ∞`, lost vertices). Replaced with a per-call `HashSet`.
+- [x] Partial halt kept as `|U| > k·2^(l·t)` (Session 3): `>=` spuriously
+      top-level-halts when the bound equals n, setting `B' = last_bp << ∞`.
+- [x] Regression unit tests: base_case B'/cap, FindPivots improvement, S_i leftovers,
+      partial+pivots no spurious top-level halt (`er_random(400,4,seed=1)`).
+- [x] `config_variants` now uses `from_n(g.n)` (was fixed `from_n(200)`).
+
+### Bugs found & fixed
+
+1. **`base_case` k+1 / B' were dead.** Discoveries were marked on push, so the extract path
+   never incremented `settled` for non-seeds; with `|S| ≤ k` the leaf ran a full bounded
+   Dijkstra and almost always returned `B' = B`. Masked the missing leftover prepend and
+   made partial-execution boundaries meaningless. Fixed to settle-on-extract.
+2. **Missing `S_i` leftover re-prepend** when `B'_i < B_i`. Latent until (1) made `B'` real;
+   without it, tied/partial children dropped unfinished seeds. Skip-if-in-`U_i` prevents the
+   equal-key infinite re-prepend Session 1 already hit.
+3. **FindPivots under-propagated.** Already-marked vertices were never re-queued on ≤ /
+   strict improvement, unlike Alg. 1’s per-round `W_i`. Pivot/W distances could stay
+   suboptimal inside the k rounds (end-to-end SSSP still often healed via W→queue).
+4. **Spurious top-level partial halt (correctness).** Child recursion overwrote `marked_u`
+   epochs, so the same vertex was counted many times in `|U|`. Repro: `from_n(200)` params
+   on `er_random(400, 4, seed=1)`, partial+pivots+BTreeMap → `HALT l=3 |U|=513 limit=512
+   last_bp=26` with vertex 140 at Dijkstra dist 29 left at `∞`. HashSet dedup fixes it;
+   top level no longer halts when `k·2^(l·t) ≥ n`.
+
+### Key findings
+
+1. Distance-vs-Dijkstra tests alone do **not** enforce paper local contracts (B', k+1,
+   leftovers, pivot completeness). Need structural unit tests (now added).
+2. Shared epoch arrays across recursive calls are a recurring hazard (`marked` was fixed in
+   Session 3; `marked_u` had the same shape of bug).
+3. Returning boundary + still-in-heap from BaseCase remains a necessary deviation for
+   zero-weight / tie buckets under strict-`<` routing.
+4. Open follow-ups from Session 2 on base_case B' / FindPivots parent reset are **closed**
+   by this session (parent reset for all W was already in tree; B' now real).
+
+### Open / next
+
+- [x] Phase 4 — see Session 5.
+- [x] Pivot-forest hardening — see Session 5.
+- [x] Phase 5 (harness) + Phase 6 docs — see Session 5.
+- [ ] Optional: push scaling to n=10^7 on a bigger machine; D₀ BatchPrepend; true
+      decrease-key in queues.
+
+## Session 5 (2026-08-18) — Phase 4 polish + docs + scaling harness
+
+Goal: engineering constants (after Session 4 correctness), pivot-forest hardening,
+reproducibility docs, and a scaling bench mode.
+
+### Status
+
+- [x] **Depth-stamped U membership** replaces per-call `HashSet`: each recursive frame
+      marks with its `call_depth`; children write deeper depths and cannot clobber the
+      parent’s U set (fixes the Session 4 clobber class without hashing).
+- [x] **Arena buffer pool** (`pool_u32` / `pool_pairs`) recycles scratch vectors across
+      BaseCase / FindPivots / BMSSP frames.
+- [x] **CSR locality:** `Graph::from_edges` sorts each adjacency list by `(weight, to)`.
+- [x] **Pivot forest:** equality parents only to *earlier-in-W* vertices; clear only W
+      slots of `sub` / `w_index` (no full `sub.fill(0)`).
+- [x] Iterative stack deferred: recursion depth is `O(l)=O(log^{1/3} n)` (tiny); not the
+      bottleneck vs Dijkstra.
+- [x] `ALGORITHM.md`, `AUDIT.md`, `BENCHMARKS.md` written.
+- [x] Bench: `BMSSP_SCALE=1` builds n≈1e4..1e6 ER/grid/layered set and prints
+      `t/(m log^{2/3} n)` vs `t/(m+n log n)` normalizers (skips transform pass).
+- [x] Full suite: **41 tests** green. Release bench (partial+block): all `verified=true`.
+
+### Bench snapshot (release, iters=1, partial+Block+pivots)
+
+| family | n | dijk(ms) | bmssp(ms) | speedup | verified |
+|---|---|---|---|---|---|
+| er_c4_1e5 | 1e5 | 14.3 | 143.6 | 0.10 | true |
+| grid_316 | ~1e5 | 8.1 | 61.0 | 0.13 | true |
+| layered | 1e5 | 11.8 | 85.6 | 0.14 | true |
+
+vs Session 3: layered 190→86ms, er_c4_1e5 370→144ms — constant-factor win, Dijkstra still ahead.
+
+### Findings
+
+1. Depth stamps are the right long-term U dedup (O(1), clobber-safe); HashSet was a
+   correctness stopgap.
+2. Sorting CSR by weight helps BaseCase/Dijkstra-like scans slightly; transform still
+   loses on hubby graphs.
+3. Docs + `BMSSP_SCALE` close the Phase 5/6 “reproducibility” checklist for agentic
+   follow-up; full 1e7 runs need more wall-clock than this session budgeted.

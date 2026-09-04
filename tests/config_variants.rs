@@ -12,8 +12,10 @@ use rand::Rng;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 
-fn variants() -> Vec<BmsspConfig> {
-    let base = BmsspConfig::from_n(200);
+fn variants_for(n: usize) -> Vec<BmsspConfig> {
+    // Use graph-native k/t/l so the top-level partial bound k·2^(l·t) dominates
+    // n (successful top-level execution) instead of a fixed from_n(200).
+    let base = BmsspConfig::from_n(n);
     let mut v = Vec::new();
     for partial in [false, true] {
         for queue in [QueueKind::BTreeMap, QueueKind::Block] {
@@ -32,7 +34,7 @@ fn variants() -> Vec<BmsspConfig> {
 
 fn check_variants(g: &bmssp_rs::graph::Graph, src: u32, eps: f64) {
     let d = bmssp_rs::dijkstra::dijkstra(g, src, &mut Counters::new());
-    for cfg in variants() {
+    for cfg in variants_for(g.n) {
         let mut c = Counters::new();
         let b = BmsspEngine::new(g, cfg.clone(), &mut c).run(src);
         if let Err(e) = common::try_close(&d, &b, eps) {
@@ -103,7 +105,7 @@ fn variants_agree_with_default_on_dense_graphs() {
             let g = bmssp_rs::graph::dense(n, p, 3, &wd);
             for src in 0..n as u32 {
                 let d = barrier_breaker_sssp(&g, src, &mut Counters::new());
-                for cfg in variants() {
+                for cfg in variants_for(g.n) {
                     let mut c = Counters::new();
                     let b = BmsspEngine::new(&g, cfg, &mut c).run(src);
                     assert_close(&d, &b, 0.0);

@@ -33,8 +33,9 @@ src/bmssp.rs          FindPivots / BaseCase / BMSSP recursion / barrier_breaker_
 src/bin/bench_sssp.rs custom bench CLI: median wall-clock + counters + markdown table
 benches/sssp.rs       `cargo bench` target (harness = false) reusing bench core
 tests/                oracle + property + handcrafted tests
-PLAN.md, PROGRESS.md, BENCHMARKS.md   (living docs)
+PLAN.md, PROGRESS.md, BENCHMARKS.md, ALGORITHM.md, AUDIT.md   (living docs)
 ```
+
 
 ## Algorithm parameters (paper)
 
