@@ -135,14 +135,24 @@ fn split_block(mut blk: Block) -> (Block, Block) {
         below
     };
     let right = blk.items.split_off(mid);
-    let ub_l = blk.items.iter().map(|it| it.1).fold(f64::NEG_INFINITY, f64::max);
-    let ub_r = right.iter().map(|it| it.1).fold(f64::NEG_INFINITY, f64::max);
+    let ub_l = blk
+        .items
+        .iter()
+        .map(|it| it.1)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let ub_r = right
+        .iter()
+        .map(|it| it.1)
+        .fold(f64::NEG_INFINITY, f64::max);
     (
         Block {
             items: blk.items,
             ub: ub_l,
         },
-        Block { items: right, ub: ub_r },
+        Block {
+            items: right,
+            ub: ub_r,
+        },
     )
 }
 
@@ -215,7 +225,13 @@ impl BlockQueue {
                 let mut blk = self.blocks.remove(&UbKey { ub: lub, seq: lseq }).unwrap();
                 blk.items.push((v, key));
                 blk.ub = key;
-                self.blocks.insert(UbKey { ub: K(key), seq: lseq }, blk);
+                self.blocks.insert(
+                    UbKey {
+                        ub: K(key),
+                        seq: lseq,
+                    },
+                    blk,
+                );
             } else {
                 self.seq += 1;
                 self.blocks.insert(
@@ -249,7 +265,13 @@ impl BlockQueue {
                     let mut blk = self.blocks.remove(&pk).unwrap();
                     blk.items.push((v, key));
                     blk.ub = key;
-                    self.blocks.insert(UbKey { ub: K(key), seq: pk.seq }, blk);
+                    self.blocks.insert(
+                        UbKey {
+                            ub: K(key),
+                            seq: pk.seq,
+                        },
+                        blk,
+                    );
                     return;
                 }
             }
@@ -275,9 +297,21 @@ impl BlockQueue {
             let blk = self.blocks.remove(&target).unwrap();
             let (b1, b2) = split_block(blk);
             self.seq += 1;
-            self.blocks.insert(UbKey { ub: K(b1.ub), seq: self.seq }, b1);
+            self.blocks.insert(
+                UbKey {
+                    ub: K(b1.ub),
+                    seq: self.seq,
+                },
+                b1,
+            );
             self.seq += 1;
-            self.blocks.insert(UbKey { ub: K(b2.ub), seq: self.seq }, b2);
+            self.blocks.insert(
+                UbKey {
+                    ub: K(b2.ub),
+                    seq: self.seq,
+                },
+                b2,
+            );
         }
     }
 
@@ -599,11 +633,7 @@ mod tests {
         let take = items.partition_point(|it| it.1 <= vm);
         let s: Vec<u32> = items[..take].iter().map(|&(v, _)| v).collect();
         items.drain(..take);
-        let x = if items.is_empty() {
-            bound
-        } else {
-            items[0].1
-        };
+        let x = if items.is_empty() { bound } else { items[0].1 };
         (s, x)
     }
 }

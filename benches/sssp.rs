@@ -7,7 +7,7 @@ fn main() {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(2);
-    let use_pivots = std::env::var("BMSSP_NO_PIVOTS").is_err();
-    println!("cargo bench: iters={iters} use_pivots={use_pivots}\n");
-    print!("{}", bench_sssp::run_all(iters, use_pivots));
+    let ab = bench_sssp::ablation_from_env();
+    println!("cargo bench: iters={iters} ablation={ab:?}\n");
+    print!("{}", bench_sssp::run_all(iters, &ab));
 }

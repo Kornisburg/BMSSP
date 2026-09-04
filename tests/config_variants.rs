@@ -44,7 +44,11 @@ fn check_variants(g: &bmssp_rs::graph::Graph, src: u32, eps: f64) {
                     edges.push(format!("{} {} {}", u, g.to[i], g.weight[i]));
                 }
             }
-            panic!("n={} src={src} cfg={cfg:?} {e}\nedges: {}", g.n, edges.join(" "));
+            panic!(
+                "n={} src={src} cfg={cfg:?} {e}\nedges: {}",
+                g.n,
+                edges.join(" ")
+            );
         }
         let _ = c; // counters alive: exercises drop paths too
     }
@@ -72,7 +76,11 @@ fn variants_match_on_small_random_graphs() {
         }
         let g = bmssp_rs::graph::Graph::from_edges(n, &edges);
         let src = rng.gen_range(0..n as u32);
-        let eps = if matches!(wd, WeightDist::Real { .. }) { 1e-9 } else { 0.0 };
+        let eps = if matches!(wd, WeightDist::Real { .. }) {
+            1e-9
+        } else {
+            0.0
+        };
         check_variants(&g, src, eps);
     }
 }
@@ -85,7 +93,8 @@ fn variants_match_on_sized_families() {
             let g = er_random(n, 4, seed, &wd);
             check_variants(&g, 0, 0.0);
         }
-    }    let wd2 = WeightDist::Int { min: 0, max: 9 };
+    }
+    let wd2 = WeightDist::Int { min: 0, max: 9 };
     let g = bmssp_rs::graph::grid(10, 12, 5, &wd2);
     check_variants(&g, 0, 0.0);
     check_variants(&g, 60, 0.0);

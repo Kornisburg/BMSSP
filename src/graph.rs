@@ -59,7 +59,10 @@ impl Graph {
         let mut out: Vec<Vec<(u32, f64)>> = vec![Vec::new(); n];
         for &(u, v, w) in edges {
             assert!(u < n as u32 && v < n as u32, "vertex out of range");
-            assert!(w.is_finite() && w >= 0.0, "weight must be finite, non-negative");
+            assert!(
+                w.is_finite() && w >= 0.0,
+                "weight must be finite, non-negative"
+            );
             out[u as usize].push((v, w));
         }
         // Sort each adjacency list by (weight, target) for scan locality in
@@ -80,7 +83,12 @@ impl Graph {
                 weight.push(w);
             }
         }
-        Graph { n, offsets, to, weight }
+        Graph {
+            n,
+            offsets,
+            to,
+            weight,
+        }
     }
 
     pub fn to_adjacency(&self) -> Vec<Vec<(usize, f64)>> {

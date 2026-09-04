@@ -32,7 +32,11 @@ mod tests {
             let (k, t, l) = params(n);
             assert!(k >= 1 && t >= 1 && l >= 1, "n={n}: k={k} t={t} l={l}");
             // top-level bound must dominate n
-            let cap = k.saturating_mul(1usize.checked_shl((l * t).min(63) as u32).unwrap_or(usize::MAX));
+            let cap = k.saturating_mul(
+                1usize
+                    .checked_shl((l * t).min(63) as u32)
+                    .unwrap_or(usize::MAX),
+            );
             assert!(cap >= n, "n={n}: cap {cap} < n");
         }
     }

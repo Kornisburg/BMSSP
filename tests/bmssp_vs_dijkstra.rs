@@ -48,7 +48,12 @@ fn er_sparse_across_sizes_and_densities() {
     for n in [2usize, 3, 5, 10, 50, 200, 1000, 5000] {
         for c in [1usize, 2, 4, 8, 16] {
             for seed in 0..4u64 {
-                let g = er_random(n, c, seed.wrapping_mul(0x9E3779B97F4A7C15).wrapping_add(1), &wd);
+                let g = er_random(
+                    n,
+                    c,
+                    seed.wrapping_mul(0x9E3779B97F4A7C15).wrapping_add(1),
+                    &wd,
+                );
                 for src in [0u32, (n / 2) as u32] {
                     assert_bmssp_matches_dijkstra(&g, src, 0.0);
                 }
@@ -111,7 +116,11 @@ fn medium_graphs_match_floyd_oracle() {
         let g = er_random(12, 3, seed, &WeightDist::Int { min: 0, max: 5 });
         let oracle = floyd_warshall(&g);
         for src in 0..12u32 {
-            let b = bmssp_rs::bmssp::barrier_breaker_sssp(&g, src, &mut bmssp_rs::counters::Counters::new());
+            let b = bmssp_rs::bmssp::barrier_breaker_sssp(
+                &g,
+                src,
+                &mut bmssp_rs::counters::Counters::new(),
+            );
             common::assert_close(&b, &oracle[src as usize * 12..(src as usize + 1) * 12], 0.0);
         }
     }

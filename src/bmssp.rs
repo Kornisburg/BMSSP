@@ -231,10 +231,7 @@ impl<'a> BmsspEngine<'a> {
             if bp_i < bi - EPS {
                 for &x in &si {
                     let dx = self.dist[x as usize];
-                    if dx >= bp_i - EPS
-                        && dx < bi - EPS
-                        && self.u_depth[x as usize] != depth
-                    {
+                    if dx >= bp_i - EPS && dx < bi - EPS && self.u_depth[x as usize] != depth {
                         to_batch.push((x, dx));
                     }
                 }
@@ -341,11 +338,14 @@ impl<'a> BmsspEngine<'a> {
                     if self.trace {
                         eprintln!("B: {node} -> {v} cand={cand} b={b}");
                     }
-                    heap.push(MinState { cost: cand, node: v });
+                    heap.push(MinState {
+                        cost: cand,
+                        node: v,
+                    });
                     self.counters.heap_insert += 1;
                 }
             }
-            if u0.len() >= self.cfg.k + 1 {
+            if u0.len() > self.cfg.k {
                 break;
             }
         }
@@ -590,7 +590,10 @@ mod tests {
         let mut eng = BmsspEngine::new(&g, cfg, &mut c);
         eng.dist[0] = 0.0;
         let (_p, w) = eng.find_pivots(INF, &[0]);
-        assert!(w.contains(&1) && w.contains(&2), "W should contain both 1 and 2");
+        assert!(
+            w.contains(&1) && w.contains(&2),
+            "W should contain both 1 and 2"
+        );
         assert!(
             (eng.dist[1] - 2.0).abs() < 1e-12,
             "FindPivots must improve 0→1 via 2 within k rounds; dist[1]={}",

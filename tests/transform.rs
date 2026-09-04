@@ -2,7 +2,7 @@ mod common;
 
 use bmssp_rs::counters::Counters;
 use bmssp_rs::dijkstra::dijkstra;
-use bmssp_rs::graph::{dense, er_random, grid, layered, power_law, chain, Graph, WeightDist};
+use bmssp_rs::graph::{chain, dense, er_random, grid, layered, power_law, Graph, WeightDist};
 use bmssp_rs::transform::{max_out_degree, to_constant_degree};
 use common::{assert_bmssp_matches_dijkstra, assert_close};
 
@@ -20,7 +20,11 @@ fn transform_max_out_degree_is_at_most_two() {
     ];
     for g in graphs {
         let t = to_constant_degree(&g);
-        assert!(max_out_degree(&t) <= 2, "max out-degree {} > 2", max_out_degree(&t));
+        assert!(
+            max_out_degree(&t) <= 2,
+            "max out-degree {} > 2",
+            max_out_degree(&t)
+        );
     }
 }
 

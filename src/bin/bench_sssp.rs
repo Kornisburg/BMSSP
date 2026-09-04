@@ -143,8 +143,19 @@ pub fn bench_one_transformed(
 pub fn header() -> String {
     format!(
         "{:<10} {:>10} {:>12} {:>10} {:>10} {:>7} {:>8} {:>10} {:>10} {:>10} {:>10} {:>9} {:>6}",
-        "family", "n", "m", "dijk(ms)", "bmssp(ms)", "speedup", "verified",
-        "d#ext", "d#rel", "b#rel", "b#pull", "b#rec", "b#piv"
+        "family",
+        "n",
+        "m",
+        "dijk(ms)",
+        "bmssp(ms)",
+        "speedup",
+        "verified",
+        "d#ext",
+        "d#rel",
+        "b#rel",
+        "b#pull",
+        "b#rec",
+        "b#piv"
     )
 }
 

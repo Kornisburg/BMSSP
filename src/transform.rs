@@ -27,10 +27,7 @@ pub fn to_constant_degree(g: &Graph) -> Graph {
                 adj[u].push((g.to[i], g.weight[i]));
             }
         } else {
-            let edges: Vec<(u32, f64)> = g
-                .edge_range(u)
-                .map(|i| (g.to[i], g.weight[i]))
-                .collect();
+            let edges: Vec<(u32, f64)> = g.edge_range(u).map(|i| (g.to[i], g.weight[i])).collect();
             build_tree(&mut adj, &mut next, u as u32, &edges, 0, d);
         }
     }

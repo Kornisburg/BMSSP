@@ -8,17 +8,15 @@ fn check(n: usize, edges: &[(u32, u32, f64)], src: u32, eps: f64) -> bool {
     let g = Graph::from_edges(n, edges);
     let d = dijkstra(&g, src, &mut Counters::new());
     let b = barrier_breaker_sssp(&g, src, &mut Counters::new());
-    d.iter()
-        .zip(&b)
-        .all(|(x, y)| {
-            if x.is_infinite() && y.is_infinite() {
-                true
-            } else if x.is_infinite() || y.is_infinite() {
-                false
-            } else {
-                (x - y).abs() <= eps * (1.0 + x.abs().max(y.abs()))
-            }
-        })
+    d.iter().zip(&b).all(|(x, y)| {
+        if x.is_infinite() && y.is_infinite() {
+            true
+        } else if x.is_infinite() || y.is_infinite() {
+            false
+        } else {
+            (x - y).abs() <= eps * (1.0 + x.abs().max(y.abs()))
+        }
+    })
 }
 
 fn main() {
