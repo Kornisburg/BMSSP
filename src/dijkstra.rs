@@ -39,6 +39,7 @@ impl PartialOrd for MinState {
 
 /// Standard binary-heap Dijkstra on a CSR graph (lazy-deletion).
 pub fn dijkstra(g: &Graph, src: u32, counters: &mut Counters) -> Vec<f64> {
+    assert!(src < g.n as u32, "source vertex out of range");
     let n = g.n;
     let mut dist = vec![INF; n];
     dist[src as usize] = 0.0;
@@ -138,5 +139,12 @@ mod tests {
         let d = dijkstra(&g, 3, &mut Counters::new());
         assert_eq!(d[0], INF);
         assert_eq!(d[4], 1.0);
+    }
+
+    #[test]
+    #[should_panic(expected = "source vertex out of range")]
+    fn dijkstra_panics_on_out_of_range_src() {
+        let g = crate::graph::chain(5, 1, &WeightDist::Unit);
+        dijkstra(&g, 5, &mut Counters::new());
     }
 }
